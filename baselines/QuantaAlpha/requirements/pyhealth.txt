@@ -1,0 +1,3 @@
+# Optional dependency for PyHealth model wrappers.
+
+pyhealth>=2.0.0

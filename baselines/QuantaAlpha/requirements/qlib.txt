@@ -1,0 +1,4 @@
+# Optional dependencies for the original financial Qlib/RD-Agent runner.
+
+rdagent==0.8.0
+pyqlib

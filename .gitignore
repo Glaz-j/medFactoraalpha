@@ -1,0 +1,57 @@
+# Runtime outputs and experiment artifacts
+results/
+logs/
+prompt_cache.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Local vendor Git metadata backups
+.git_vendor_backups/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environments and local config
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+ENV/
+
+# ML/training outputs
+checkpoints/
+wandb/
+mlruns/
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+
+# Jupyter / editor files
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# LaTeX build products
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.toc
+*.out
+
+# OS files
+.DS_Store
+Thumbs.db

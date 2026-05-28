@@ -1,0 +1,16 @@
+# Optional dependencies for QuantaAlpha's original LLM agent workflow.
+
+pydantic-settings
+loguru
+fire
+fuzzywuzzy
+openai
+python-dotenv
+pandarallel
+langchain-community
+tiktoken
+pymupdf
+azure-ai-formrecognizer
+tables
+docker
+setuptools-scm
