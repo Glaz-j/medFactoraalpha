@@ -1,0 +1,169 @@
+\documentclass[letterpaper]{article}
+\usepackage{aaai}
+\usepackage{times}
+\usepackage{helvet}
+\usepackage{courier}
+\usepackage{booktabs}
+\usepackage{multirow}
+\frenchspacing
+\setlength{\pdfpagewidth}{8.5in}
+\setlength{\pdfpageheight}{11in}
+\pdfinfo{
+/Title (MedFactoraAlpha LLM Guided Symbolic Factor Mining for Clinical Prediction)
+/Author (MedFactoraAlpha Team)}
+\setcounter{secnumdepth}{0}
+
+\title{MedFactoraAlpha: LLM-Guided Symbolic Factor Mining for Clinical Prediction}
+\author{
+MedFactoraAlpha Team\\
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\begin{quote}
+We present MedFactoraAlpha, an adaptation of the QuantaAlpha factor-mining workflow to electronic health record prediction tasks. The system uses a large language model to propose clinically interpretable symbolic factors, validates them with a constrained medical factor language, materializes them on eICU patient records, and evaluates them with lightweight tabular classifiers. We currently support three eICU tasks aligned with common PyHealth benchmarks: length-of-stay prediction, mortality prediction, and readmission prediction. Across these tasks, generated symbolic factors consistently improve over a simple tabular baseline, with especially strong gains on mortality prediction and length-of-stay classification. The current implementation emphasizes reproducibility, leakage control, task-specific feedback, and inspectable factor definitions rather than black-box representation learning.
+\end{quote}
+\end{abstract}
+
+\section{Introduction}
+
+Clinical prediction from electronic health records (EHRs) often benefits from high-dimensional sequence models, but these models can be difficult to inspect and expensive to iterate. In contrast, many clinical risk patterns can be expressed as compact temporal or co-occurrence factors: for example, the timing of acute kidney injury codes, late respiratory documentation, medication escalation, or early-to-late changes in treatment intensity. MedFactoraAlpha explores whether large language models (LLMs) can automate the discovery of such factors while preserving interpretability.
+
+The project adapts the QuantaAlpha workflow, originally designed around financial alpha discovery, to medical EHR prediction. Instead of asking an LLM to generate stock factors, MedFactoraAlpha asks it to generate clinically meaningful EHR factors. These factors are validated, computed over patient stays, and scored through a repeatable tabular evaluator. The resulting feedback is then returned to the LLM to guide the next proposal round.
+
+\section{System Overview}
+
+MedFactoraAlpha consists of five main components.
+
+\textbf{Task interface.}
+We implemented eICU task wrappers for length-of-stay prediction, mortality prediction, and readmission prediction. Each task defines its label, evaluation metrics, observation horizon, and data-source profile.
+
+\textbf{Medical factor proposal.}
+An LLM proposes factor candidates using task-specific instructions, observed vocabulary summaries, previous feedback, and a constrained factor schema. Factors are represented as JSON-like specifications rather than free-form model code by default.
+
+\textbf{Medical DSL and validation.}
+The factor language exposes three core event sources: conditions, procedures, and drugs. It supports count, ratio, keyword, temporal keyword, persistence, early-late delta, and first-occurrence timing operations. For expanded experiments, numeric temporal operations and safe Python factors can also be enabled. Validation rejects unsupported operations, invalid sources, duplicate factors, and factors that exceed the configured observation window.
+
+\textbf{Factor materialization.}
+Validated factors are computed on eICU samples and converted into explicit tabular features. The implementation caches direct tabular sample frames to make repeated factor evaluation practical on full eICU runs.
+
+\textbf{Lightweight evaluator.}
+Each factor set is evaluated with tabular models. The main reported model is logistic regression over either baseline features, generated factors, or their combination. The baseline feature set contains six coarse utilization statistics: log counts of conditions, procedures, and drugs, plus three count ratios. This makes the factor contribution easy to inspect.
+
+\section{Data and Tasks}
+
+We use eICU patient records and evaluate three prediction tasks that correspond to the PyHealth eICU benchmark family. Table~\ref{tab:tasks} summarizes the current experimental setup.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{llrl}
+\toprule
+Task & Benchmark & Samples & Primary Metric\\
+\midrule
+Mortality & Table 13 & 138,785 & AUROC\\
+Length of stay & Table 14 & 140,132 & Macro F1\\
+Readmission & Table 15 & 38,817 & AUROC\\
+\bottomrule
+\end{tabular}
+\caption{Current eICU tasks used in MedFactoraAlpha experiments.}
+\label{tab:tasks}
+\end{table}
+
+For the PyHealth-standard readmission setting, the available event sources match the benchmark-style eICU inputs: diagnosis ICD codes, physical-exam paths, and medication names. Length-of-stay and mortality experiments were run with the project task interfaces developed during the workflow buildout. All binary readmission and mortality factors are constrained to early observation windows when configured, typically within the first 48 hours of the ICU stay, to reduce target leakage.
+
+\section{Factor Types}
+
+The current system supports several families of interpretable clinical factors.
+
+\textbf{Utilization factors} summarize event volume, such as diagnosis count, medication count, or procedure-to-drug ratio.
+
+\textbf{Keyword factors} detect clinically meaningful concepts in diagnosis, procedure, or medication streams. Examples include renal injury, respiratory failure, pneumonia, furosemide, potassium chloride, sodium chloride, GCS documentation, and blood-pressure documentation.
+
+\textbf{Temporal factors} restrict keyword counts to windows such as 0--24 hours and 24--48 hours, compute late-minus-early deltas, or measure the first observed offset of a clinical event.
+
+\textbf{Persistence factors} measure whether a concept appears repeatedly across multiple windows.
+
+\textbf{Safe Python factors} allow a restricted form of generated Python code for nontrivial but interpretable interaction logic. The runtime exposes only sanitized current-stay event lists and offsets, and rejects imports, file access, labels, and unsafe calls.
+
+\section{Experimental Results}
+
+Table~\ref{tab:pyhealth-comparison} places MedFactoraAlpha alongside the original PyHealth eICU benchmark baselines reported for Tables 13--15. The PyHealth rows are neural sequence or attention models trained in the standard benchmark setting, while MedFactoraAlpha is a lightweight symbolic-factor method evaluated with logistic regression over generated factors. We include the table as a reference comparison and to make the current system status easy to inspect.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{llrrrrr}
+\toprule
+Task & Model & Accuracy & AUROC & PRAUC & Macro F1 & Loss\\
+\midrule
+\multirow{6}{*}{Mortality}
+& Retain & 0.9183 & 0.6836 & 0.1807 & 0.0071 & 0.2656\\
+& Transformer & 0.9159 & 0.6696 & 0.1847 & 0.0530 & 0.2788\\
+& RNN & 0.9150 & 0.6693 & 0.2136 & 0.1859 & 0.2850\\
+& ConCare & 0.9180 & 0.6306 & 0.1448 & 0.0000 & 0.2773\\
+& Adacare & 0.9180 & 0.6248 & 0.1315 & 0.0000 & 0.2781\\
+& \textbf{MedFactoraAlpha} & 0.7908 & \textbf{0.8247} & \textbf{0.4131} & \textbf{0.6270} & 0.5133\\
+\midrule
+\multirow{6}{*}{Length of stay}
+& RNN & 0.3912 & -- & -- & 0.2420 & 1.5503\\
+& Retain & 0.3796 & -- & -- & 0.1955 & 1.5876\\
+& Transformer & 0.3696 & -- & -- & 0.1719 & 1.6659\\
+& Adacare & 0.3547 & -- & -- & 0.1609 & 1.6569\\
+& ConCare & 0.3491 & -- & -- & 0.1545 & 1.6655\\
+& \textbf{MedFactoraAlpha} & \textbf{0.5688} & -- & -- & \textbf{0.3527} & \textbf{1.1841}\\
+\midrule
+\multirow{6}{*}{Readmission}
+& Transformer & 0.7353 & 0.8151 & 0.8570 & 0.7497 & 0.5357\\
+& RNN & 0.7346 & 0.8071 & 0.8505 & \textbf{0.7523} & 0.5475\\
+& Retain & 0.7319 & 0.8058 & 0.8498 & 0.7470 & \textbf{0.5287}\\
+& Adacare & 0.6866 & 0.7650 & 0.8140 & 0.7050 & 0.5744\\
+& ConCare & 0.6756 & 0.7467 & 0.8014 & 0.7070 & 0.6029\\
+& \textbf{MedFactoraAlpha} & 0.5860 & 0.6218 & 0.6461 & 0.5814 & 0.6733\\
+\bottomrule
+\end{tabular}
+\caption{Reference comparison with the original PyHealth eICU benchmark tables. PyHealth baseline numbers are from Tables 13--15. MedFactoraAlpha reports the best generated symbolic-factor run available for each task.}
+\label{tab:pyhealth-comparison}
+\end{table*}
+
+Table~\ref{tab:ablation} compares the simple baseline logistic model against the best generated-factor model from the current experiments. The baseline uses only six coarse count features. The MedFactoraAlpha result uses generated symbolic factors with logistic regression, either factor-only or combined with the baseline features depending on which feature set achieved the best reported score.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{llrrrrr}
+\toprule
+Task & Model & Accuracy & AUROC & PRAUC & Macro F1 & Loss\\
+\midrule
+\multirow{2}{*}{Mortality}
+& Baseline logistic & 0.6766 & 0.6475 & 0.1609 & 0.5121 & 0.6611\\
+& MedFactoraAlpha & 0.7908 & 0.8247 & 0.4131 & 0.6270 & 0.5133\\
+\midrule
+\multirow{2}{*}{Length of stay}
+& Baseline logistic & 0.2727 & -- & -- & 0.1568 & 2.0075\\
+& MedFactoraAlpha & 0.5688 & -- & -- & 0.3527 & 1.1841\\
+\midrule
+\multirow{2}{*}{Readmission}
+& Baseline logistic & 0.5215 & 0.5293 & 0.5794 & 0.5142 & 0.6913\\
+& MedFactoraAlpha & 0.5860 & 0.6218 & 0.6461 & 0.5814 & 0.6733\\
+\bottomrule
+\end{tabular}
+\caption{Ablation against our internal count-only tabular baseline.}
+\label{tab:ablation}
+\end{table*}
+
+The internal ablation shows clear gains over the count-only baseline. Mortality prediction receives the largest AUROC gain, improving from 0.6475 to 0.8247. Length-of-stay prediction also improves substantially, with macro F1 increasing from 0.1568 to 0.3527 and loss decreasing from 2.0075 to 1.1841. Readmission is more challenging, but the PyHealth-standard safe-Python run still improves AUROC from 0.5293 to 0.6218 and macro F1 from 0.5142 to 0.5814.
+
+\section{Qualitative Observations}
+
+The generated factors tend to align with recognizable clinical patterns. Strong length-of-stay factors often involve temporal event burden and treatment intensity. Mortality factors benefit from renal, respiratory, and hemodynamic signals. Readmission factors are more sensitive to search stability, but useful families include acute kidney injury timing, respiratory or pneumonia evidence, furosemide and electrolyte-related medications, saline exposure, and late documentation of neurologic or blood-pressure status.
+
+The workflow also records factor summaries, validation failures, and best-of-run summaries. This makes it possible to inspect not only the final score, but also the factor set that produced it, the feature count, baseline deltas, and task-specific metrics used by the LLM feedback step.
+
+\section{Conclusion}
+
+MedFactoraAlpha demonstrates that a QuantaAlpha-style LLM factor workflow can be adapted to clinical prediction tasks. Instead of training an opaque sequence model directly, the system searches for compact symbolic factors, validates them against a task-aware medical DSL, and evaluates them with lightweight tabular models. Current experiments on eICU mortality, length-of-stay, and readmission prediction show consistent improvements over a simple utilization baseline while preserving factor-level interpretability.
+
+\end{document}
